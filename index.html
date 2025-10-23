@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>純前端 QR Code 產生器 (修正預覽與留白)</title>
+    <title>純前端 QR Code 產生器 (修正下載留白)</title>
     <style>
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -11,7 +11,7 @@
             place-items: center;
             min-height: 90vh;
             background-color: #f4f4f4;
-            margin: 0; /* 確保 body 沒有額外的 margin */
+            margin: 0;
         }
         .container {
             background: #fff;
@@ -22,7 +22,7 @@
         }
         #text-input {
             width: 300px;
-            max-width: calc(100% - 20px); /* 讓手機上不會溢出 */
+            max-width: calc(100% - 20px);
             padding: 10px;
             font-size: 16px;
             border: 1px solid #ccc;
@@ -31,10 +31,10 @@
         }
         .buttons {
             display: flex;
-            flex-wrap: wrap; /* 手機上按鈕可以換行 */
+            flex-wrap: wrap;
             justify-content: center;
             gap: 10px;
-            margin-bottom: 25px; /* 按鈕與 QR Code 之間增加距離 */
+            margin-bottom: 25px;
         }
         button {
             padding: 10px 20px;
@@ -43,8 +43,8 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            flex-grow: 1; /* 讓按鈕在小螢幕上可以伸展 */
-            max-width: 150px; /* 控制按鈕最大寬度 */
+            flex-grow: 1;
+            max-width: 150px;
         }
         #generate-btn {
             background-color: #007bff;
@@ -63,27 +63,30 @@
             cursor: not-allowed;
         }
 
-        /* --- vvvvvvvvvv 修正預覽問題的 CSS vvvvvvvvvv --- */
+        /* --- vvvvvvvvvv CSS 修改 vvvvvvvvvv --- */
+        /* 我們讓容器的寬高剛好等於 QR Code 核心的寬高 (256px)。
+           這樣 CSS 就不會製造假的留白。
+           (或者，您也可以保留 280px，但要清楚知道這是 CSS 留白，不是圖片的)
+           為了讓 "預覽" 和 "下載" 一致，我們讓預覽也 *不* 帶有 CSS 留白。
+           下載時再統一加上。
+        */
         #qrcode-container {
-            /* 調整容器大小，因為現在會包含留白，所以實際畫布會比之前設定的 width/height 小一點 */
-            width: 280px; /* 假設 256px 核心 + 2 * 12px 留白 */
-            height: 280px; /* 假設 256px 核心 + 2 * 12px 留白 */
-            margin: 0 auto; /* 置中 */
-            display: flex; /* 使用 flexbox 確保內部 canvas 置中 */
-            justify-content: center;
-            align-items: center;
+            width: 256px; 
+            height: 256px;
+            margin: 0 auto;
+            display: grid; /* 改回 grid 比較簡單 */
+            place-items: center;
             border: 1px solid #eee;
-            background-color: #fff; /* 確保背景是白色，留白才會顯示 */
-            box-sizing: border-box; /* 確保 padding 不會增加總寬度 */
+            /* 移除背景色，避免混淆 */
+            /* background-color: #fff; */ 
         }
-        /* qrcode.js 預設是產生 canvas */
+        
         #qrcode-container canvas { 
-            display: block; /* 確保 canvas 正常顯示 */
-            /* 如果需要，可以給 canvas 設定最大寬高，以適應不同螢幕 */
+            display: block;
             max-width: 100%;
             height: auto;
         }
-        /* --- ^^^^^^^^^^ 修正預覽問題的 CSS ^^^^^^^^^^ --- */
+        /* --- ^^^^^^^^^^ CSS 修改 ^^^^^^^^^^ --- */
 
     </style>
 </head>
@@ -122,56 +125,81 @@
                 return;
             }
 
-            qrcodeContainer.innerHTML = ""; // 清空容器
+            qrcodeContainer.innerHTML = ""; 
 
-            // --- vvvvvvvvvv 新增留白參數 vvvvvvvvvv ---
+            // --- vvvvvvvvvv JS 修改 vvvvvvvvvv ---
+            // 移除 'margin: 4'，因為它沒有如預期般繪製像素
+            // 我們將在下載時手動控制留白
             qrcode = new QRCode(qrcodeContainer, {
                 text: text,
-                width: 256,   // QR Code 核心圖形的寬度
-                height: 256,  // QR Code 核心圖形的高度
+                width: 256,
+                height: 256,
                 colorDark : "#000000",
                 colorLight : "#ffffff",
-                correctLevel : QRCode.CorrectLevel.H,
-                
-                // 新增：設定留白 (quiet zone)
-                // 這裡的 'margin' 指的是 quiet zone 的單元格數量
-                // 一般建議是 4 個單元格。
-                // 實際像素大小會是 margin * 每個單元格的像素大小
-                // qrcode.js 在內部會自動處理好，我們設定 margin 數字即可
-                margin: 4 // 預設值為 4。如果不需要，可以設為 0
+                correctLevel : QRCode.CorrectLevel.H
+                // margin: 4 (移除)
             });
-            // --- ^^^^^^^^^^ 新增留白參數 ^^^^^^^^^^ ---
+            // --- ^^^^^^^^^^ JS 修改 ^^^^^^^^^^ ---
 
-
-            // 啟用下載按鈕
             downloadBtn.disabled = false;
         }
         
+        // --- vvvvvvvvvv JS 修改：重寫下載函數 vvvvvvvvvv ---
+        
         function downloadQRCode() {
-            const canvas = qrcodeContainer.querySelector('canvas');
+            // 1. 找到 qrcode.js 產生的原始 canvas
+            const originalCanvas = qrcodeContainer.querySelector('canvas');
 
-            if (canvas) {
-                canvas.toBlob(function(blob) {
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = 'qrcode.png';
-                    
-                    document.body.appendChild(link);
-                    link.click();
-                    
-                    document.body.removeChild(link);
-                    URL.revokeObjectURL(url);
-                }, 'image/png'); // 這裡指定下載格式為 PNG
-            } else {
+            if (!originalCanvas) {
                 alert("找不到 QR Code 畫布，無法下載！");
+                return;
             }
+
+            // 2. 定義我們想要的留白 (padding) 大小，例如 16 像素
+            const PADDING = 16; 
+
+            // 3. 建立一個新的、記憶體中的 canvas
+            const downloadCanvas = document.createElement('canvas');
+            
+            // 4. 計算新 canvas 的總尺寸 (原始尺寸 + 上下左右的留白)
+            const newSize = originalCanvas.width + PADDING * 2;
+            downloadCanvas.width = newSize;
+            downloadCanvas.height = newSize;
+
+            // 5. 取得新 canvas 的 2D 繪圖環境
+            const ctx = downloadCanvas.getContext('2d');
+
+            // 6. 畫上白色背景 (這就是留白)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, newSize, newSize);
+
+            // 7. 將原始的 QR Code 畫到新 canvas 的中央
+            // drawImage(image, dx, dy)
+            // dx = PADDING (x 軸偏移量)
+            // dy = PADDING (y 軸偏移量)
+            ctx.drawImage(originalCanvas, PADDING, PADDING);
+
+            // 8. 使用新的 canvas 產生 Blob 來下載 (這部分和之前一樣)
+            downloadCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = 'qrcode.png';
+                
+                document.body.appendChild(link);
+                link.click();
+                
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
         }
         
+        // --- ^^^^^^^^^^ JS 修改：重寫下載函數 ^^^^^^^^^^ ---
+
         generateBtn.addEventListener('click', generateQRCode);
         downloadBtn.addEventListener('click', downloadQRCode);
         
-        generateQRCode(); // 頁面載入時，立即產生一次預設的
+        generateQRCode();
         
     </script>
 
